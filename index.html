@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Resilience portfolio – climate change view of service</title>
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.3/dist/leaflet.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.3/dist/leaflet.css"/>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{--ink:#1d2a33;--muted:#5d6b75;--line:#d5dbe0;--panel:#ffffffee;}
+  html,body{height:100%;margin:0;font-family:"Public Sans",system-ui,sans-serif;color:var(--ink)}
+  #map{position:absolute;inset:0}
+  .panel{position:absolute;z-index:1000;top:12px;left:56px;width:330px;max-height:calc(100% - 24px);overflow:auto;
+    background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:14px 16px;box-sizing:border-box;font-size:13px;line-height:1.45;box-shadow:0 2px 10px rgba(0,0,0,0.08)}
+  .panel h1{font-size:17px;margin:0 0 2px;font-weight:700}
+  .panel p{margin:0 0 10px;color:var(--muted)}
+  .char-list{display:flex;flex-direction:column;gap:4px;margin:8px 0 14px}
+  .char-list button{display:flex;justify-content:space-between;align-items:center;width:100%;text-align:left;border:1px solid var(--line);border-radius:5px;background:#fff;padding:7px 10px;font:inherit;font-size:12px;cursor:pointer;color:var(--ink);transition:all 0.15s}
+  .char-list button:hover{background:#f4f6f8}
+  .char-list button[aria-pressed=true]{background:var(--ink);color:#fff;border-color:var(--ink);font-weight:600}
+  .char-list button .unit{font-size:11px;opacity:0.75}
+  .char-list button:focus-visible{outline:2px solid #2a7de1;outline-offset:1px}
+  .ramp{height:12px;border-radius:3px;background:linear-gradient(90deg,#1a9850,#ffd700 50%,#d73027)}
+  .ticks{display:flex;justify-content:space-between;color:var(--muted);font-size:11px;margin-top:3px}
+  .stats{margin:12px 0 0;padding-top:10px;border-top:1px solid var(--line);display:grid;grid-template-columns:auto 1fr;gap:4px 12px}
+  .stats b{font-weight:600;text-align:right}
+  .cat-breakdown{margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}
+  .cat-breakdown h2{font-size:12px;margin:0 0 6px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.3px}
+  .cat-row{display:flex;justify-content:space-between;font-size:12px;padding:2px 0}
+  .leaflet-popup-content{font-family:"Public Sans",system-ui,sans-serif;font-size:12.5px;margin:12px 14px;line-height:1.4}
+  .pop-site{padding:8px 0;border-top:1px solid var(--line)}
+  .pop-site:first-of-type{border-top:0;padding-top:0}
+  .pop-site .nm{font-weight:700;font-size:13.5px}
+  .pop-site .loc{color:var(--muted);margin-bottom:6px;font-size:12px}
+  .pop-grid{display:grid;grid-template-columns:1fr auto;gap:3px 8px;margin-top:4px}
+  .pop-grid div.active-metric{font-weight:600;background:#f0f4f8;margin:0 -4px;padding:1px 4px;border-radius:3px}
+  .pill{display:inline-block;padding:0 6px;border-radius:3px;font-weight:600;color:#1d2a33;font-size:11.5px}
+  @media (max-width:600px){.panel{left:10px;right:10px;width:auto;top:auto;bottom:10px;max-height:48%}}
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div class="panel">
+  <h1>Climate Change View of Service</h1>
+  <p>72 locations coloured by projected 2040 climate characteristics. Select a metric below or click a dot for details.</p>
+  <div class="char-list" id="charList" role="group" aria-label="Climate characteristic to colour by"></div>
+  <div class="ramp" id="ramp"></div>
+  <div class="ticks" id="ticks"></div>
+  <div class="stats" id="stats"></div>
+  <div class="cat-breakdown" id="catBreakdown"></div>
+</div>
+<script>
+const CATS = ["Extreme (9 to 20)", "Very Low Increase (0 to 9)", "Very Low Increase (0 to 10)", "Very Low Decrease (-6 to -2)", "Moderate (4 to 5)", "Moderate Increase (0.15 to 0.2)", "Very Low Decrease (-5 to -2)", "Very Low Decrease (-3 to -2)", "Low Decrease (-20 to -6)", "Significant (6 to 7)", "No Change", "Extremely Low (1 to 2)", "Low Increase (9 to 29)", "Low Increase (9 to 31)", "Low Decrease (-16 to -4)", "Low Increase (9 to 48)", "Very Low Decrease (-4 to -2)", "Low Increase (10 to 28)", "Very Low (2 to 3)", "High Increase (0.2 to 0.3)", "Low Increase (0.07 to 0.15)", "Medium (5 to 6)", "Moderate Decrease (-37 to -16)", "No Change (-2 to 0)", "Low (3 to 4)", "High (7 to 8)", "Very High Increase (0.3 to 0.6)", "Very High (8 to 9)", "Negligible (0 to 1)"];
+const RAW = [["Resilience1","Dropbox International Unlimited Company","Dublin",53.3331,-6.2618,13.4,0,3.69,1,4.13,1,9.32,2,-4.26,3,4.24,4,0.18,5],["Resilience2","JumpCloud Inc","Louisville",39.962,-105.1524,16.8,0,-3.27,6,-1.53,7,5.36,2,-6.73,8,6.98,9,0.0,10],["Resilience3","Amazon Web Services EMEA SARL","Luxembourg",49.6247,6.1664,14.4,0,3.4,1,2.87,1,6.46,2,-4.94,3,1.1,11,0.0,10],["Resilience4","Exl Service Holdings Inc. 1","Pune",18.513916,73.928397,9.7,0,21.43,12,21.36,13,-10.32,14,18.41,15,14.92,0,0.18,5],["Resilience5","Exl Service Holdings Inc. 2","Noida",28.495801,77.435012,4.4,4,5.97,1,4.13,1,-3.6,16,3.93,1,15.78,0,0.0,10],["Resilience6","Exl Service Holdings Inc. 3","Gurugram",28.496899,77.094285,4.1,4,6.32,1,3.92,1,-1.66,16,5.57,1,15.8,0,0.0,10],["Resilience7","Dr. Logic","London",51.5118,-0.0839,17.1,0,3.4,1,4.0,1,10.47,17,-7.08,8,2.12,18,0.22,19],["Resilience8","Watertrace Limited 1","Belgrade",44.792333,20.468464,15.8,0,2.87,1,3.03,1,6.46,2,-2.57,3,9.48,0,0.0,10],["Resilience9","Watertrace Limited 2","London",51.5145,-0.0803,17.1,0,3.4,1,4.0,1,10.47,17,-7.08,8,2.12,18,0.22,19],["Resilience10","Watertrace Limited 3","Kavala",40.9579,24.4064,16.7,0,-1.38,6,-2.31,7,-1.62,16,-1.55,3,12.14,0,0.14,20],["Resilience11","Aon Insurance Managers (Guernsey) Limited","St Peter Port",49.4676,-2.5358,6.84,9,4.95,1,4.61,1,5.12,2,-3.25,3,5.26,21,0.2,5],["Resilience12","Resource Pro LLC 1","Bengaluru",13.0458,77.6206,6.0,9,11.35,12,11.26,13,-25.85,22,9.35,15,14.52,0,0.18,5],["Resilience13","Resource Pro LLC 2","Belgrade",44.7937,20.4658,15.8,0,2.87,1,3.03,1,6.46,2,-2.57,3,9.48,0,0.0,10],["Resilience14","Synpulse UK Ltd.","Bratislava",48.14336,17.12626,11.6,0,6.52,1,6.35,1,11.32,17,3.36,1,6.5,9,0.0,10],["Resilience15","Endava (UK) Limited 1","Iași",47.1585,27.5872,14.8,0,3.36,1,3.32,1,9.17,2,-3.18,3,9.82,0,0.16,5],["Resilience16","Endava (UK) Limited 2","Cluj-Napoca",46.7725,23.6263,14.7,0,1.33,1,3.19,1,9.17,2,-0.23,23,9.36,0,0.0,10],["Resilience17","Endava (UK) Limited 3","Bucharest",44.4124,26.1026,10.7,0,2.19,1,1.52,1,7.6,2,0.0,23,10.94,0,0.16,5],["Resilience18","Endava (UK) Limited 4","Brașov",45.6654,25.6141,14.3,0,3.21,1,3.55,1,8.82,2,-1.2,3,5.5,21,0.0,10],["Resilience19","Endava (UK) Limited 5","Pitești",44.8562,24.8732,12.9,0,2.77,1,3.33,1,4.17,2,1.0,1,10.66,0,0.0,10],["Resilience20","Endava (UK) Limited 6","Suceava",47.6402,26.2461,15.3,0,0.96,23,3.2,1,12.14,17,-1.14,3,9.36,0,0.0,10],["Resilience21","Endava (UK) Limited 7","Timișoara",45.7656,21.227,15.7,0,1.21,1,1.09,1,6.02,2,-2.19,3,9.54,0,0.0,10],["Resilience22","Endava (UK) Limited 8","Belgrade",44.8124,20.4103,15.9,0,3.06,1,3.1,1,5.65,2,-2.43,3,9.12,0,0.0,10],["Resilience23","Endava (UK) Limited 9","Kraków",50.0381,19.962,9.2,0,4.47,1,6.49,1,11.16,17,3.92,1,6.16,9,0.0,10],["Resilience24","Endava (UK) Limited 10","Skopje",41.9995,21.4365,17.3,0,-0.5,23,-0.66,23,0.96,23,-9.81,8,11.34,0,0.19,5],["Resilience25","Endava (UK) Limited 11","Chișinău",47.0125,28.8521,16.1,0,4.15,1,4.74,1,8.04,2,-1.94,3,9.94,0,0.16,5],["Resilience26","Endava (UK) Limited 12","London",51.5145,-0.0861,17.1,0,3.4,1,4.0,1,10.47,17,-7.08,8,2.12,18,0.22,19],["Resilience27","Endava (UK) Limited 13","Bangalore",12.9859,77.7314,5.9,21,11.65,12,11.28,13,-25.88,22,10.02,15,14.46,0,0.18,5],["Resilience28","Endava (UK) Limited 14","Hyderabad",17.4435,78.3772,3.6,24,12.28,12,13.38,13,-28.53,22,12.18,15,16.1,0,0.0,10],["Resilience29","Zensar Technologies (UK) Limited","Pune",18.55018,73.9517,9.7,0,21.43,12,21.36,13,-10.32,14,18.41,15,14.92,0,0.18,5],["Resilience30","NTT Data UK Limited 1","London",51.5126,-0.0886,17.1,0,3.4,1,4.0,1,10.47,17,-7.08,8,2.12,18,0.22,19],["Resilience31","NTT Data UK Limited 2","Gurugram",28.42534,77.03126,4.1,4,6.32,1,3.92,1,-1.66,16,5.57,1,15.8,0,0.0,10],["Resilience32","Deloitte LLP","London",51.5118,-0.0839,17.1,0,3.4,1,4.0,1,10.47,17,-7.08,8,2.12,18,0.22,19],["Resilience33","Deloitte LLP","London",51.515778,-0.106833,17.1,0,3.4,1,4.0,1,10.47,17,-7.08,8,2.12,18,0.22,19],["Resilience34","Right Cue Consulting Services Ltd 1","Basingstoke",51.268708,-1.078394,16.7,0,3.62,1,2.78,1,10.99,17,-7.51,8,2.22,18,0.21,19],["Resilience35","Right Cue Consulting Services Ltd 2","Agra",27.1767,78.0081,5.8,21,6.8,1,6.23,1,-9.84,14,6.44,1,16.5,0,0.0,10],["Resilience36","Right Cue Consulting Services Ltd 3","Bilaspur",22.0797,82.1409,15.1,0,2.24,1,2.34,1,-7.86,14,1.83,1,14.14,0,0.0,10],["Resilience37","Xceedance Consulting Limited 1","Gurugram",28.425535,77.031259,4.1,4,6.32,1,3.92,1,-1.66,16,5.57,1,15.8,0,0.0,10],["Resilience38","Xceedance Consulting Limited 2","Noida",28.621215,77.357207,4.4,4,5.97,1,4.13,1,-3.6,16,3.93,1,15.78,0,0.0,10],["Resilience39","Xceedance Consulting Limited 3","Bengaluru",12.938821,77.690403,7.8,25,10.12,12,10.23,13,-25.97,22,10.6,15,14.52,0,0.18,5],["Resilience40","Xceedance Consulting Limited 4","Pune",18.535556,73.91343,9.7,0,21.43,12,21.36,13,-10.32,14,18.41,15,14.92,0,0.18,5],["Resilience41","Sedgwick Risk Services Ltd","London",51.511436,-0.082377,17.1,0,3.4,1,4.0,1,10.47,17,-7.08,8,2.12,18,0.22,19],["Resilience42","Ernst & Young LLP 1","London",51.5129,-0.0815,17.1,0,3.4,1,4.0,1,10.47,17,-7.08,8,2.12,18,0.22,19],["Resilience43","Ernst & Young LLP 2","London",51.5048,-0.0818,17.1,0,3.4,1,4.0,1,10.47,17,-7.08,8,2.12,18,0.22,19],["Resilience44","Ernst & Young LLP 3","Warsaw",52.2332,20.9992,1.4,11,5.62,1,4.53,1,11.18,17,2.72,1,6.06,9,0.27,26],["Resilience45","Ernst & Young LLP 4","Noida",28.5028,77.4102,4.4,4,5.97,1,4.13,1,-3.6,16,3.93,1,15.78,0,0.0,10],["Resilience46","Ernst & Young LLP 5","London",51.5038,-0.0149,17.1,0,3.4,1,4.0,1,10.47,17,-7.08,8,2.12,18,0.22,19],["Resilience47","Ernst & Young LLP 6","Bristol",51.4533,-2.5889,16.7,0,5.28,1,4.2,1,10.51,17,-6.28,8,1.92,11,0.2,19],["Resilience48","Ernst & Young LLP 7","Kolkata",22.5475,88.3532,8.3,27,4.08,1,2.78,1,-11.24,14,6.09,1,17.72,0,0.17,5],["Resilience49","Natilik Limited","London",51.516936,-0.079029,17.1,0,3.4,1,4.0,1,10.47,17,-7.08,8,2.12,18,0.22,19],["Resilience50","Rockville Risk Management Associates, Inc.","Rockville Centre",40.660619,-73.644506,0.2,28,7.4,1,7.35,1,9.3,2,4.29,1,6.7,9,0.34,26],["Resilience51","Kennedys Law LLP","London",51.511396,-0.083533,17.1,0,3.4,1,4.0,1,10.47,17,-7.08,8,2.12,18,0.22,19],["Resilience52","Pro Insurance Solutions Limited 1","London",51.5132,-0.0827,17.1,0,3.4,1,4.0,1,10.47,17,-7.08,8,2.12,18,0.22,19],["Resilience53","Pro Insurance Solutions Limited 2","Gloucester",51.8617,-2.2483,16.4,0,2.28,1,3.62,1,9.27,2,-8.54,8,2.22,18,0.2,19],["Resilience54","Pro Insurance Solutions Limited 3","Liverpool",53.4058,-2.9958,9.3,0,3.1,1,3.33,1,8.91,2,-7.02,8,1.6,11,0.19,5],["Resilience55","Paychex, Inc","Rochester",43.124859,-77.491698,1.7,11,5.67,1,5.34,1,5.61,2,2.34,1,4.64,4,0.0,10],["Resilience56","Shock I.T. Inc.","Bristol",40.103218,-74.841825,0.2,28,7.38,1,6.87,1,6.54,2,4.75,1,10.68,0,0.33,26],["Resilience57","Indico Data Solutions Inc.","Boston",42.3534,-71.0477,6.2,9,5.06,1,4.77,1,8.67,2,0.73,23,6.5,9,0.29,26],["Resilience58","Xchanging Claims Services Limited","Farnborough",51.285591,-0.761153,16.7,0,3.62,1,2.78,1,10.99,17,-7.51,8,2.22,18,0.22,19],["Resilience59","Optimum Claims Limited","London",51.632521,-0.099142,17.1,0,3.4,1,4.0,1,10.47,17,-7.08,8,2.12,18,0.22,19],["Resilience60","Mac Worcs","London",51.5118,-0.0839,17.1,0,3.4,1,4.0,1,10.47,17,-7.08,8,2.12,18,0.22,19],["Resilience61","Verisk Specialty Business Solutions Ltd","London",51.5145,-0.0829,17.1,0,3.4,1,4.0,1,10.47,17,-7.08,8,2.12,18,0.22,19],["Resilience62","Slack Technologies Limited","London",51.5162,-0.0825,17.1,0,3.4,1,4.0,1,10.47,17,-7.08,8,2.12,18,0.22,19],["Resilience63","Oracle Corporation UK Limited","Reading",51.4598,-0.9395,16.7,0,3.62,1,2.78,1,10.99,17,-7.51,8,2.22,18,0.22,19],["Resilience64","Formagrid, Inc dba Airtable","San Francisco",37.7918,-122.3988,13.0,0,7.68,1,8.37,1,15.0,17,4.45,1,5.68,21,0.19,5],["Resilience65","Snowflake Computing U.K. Limited","Menlo Park",45.6796,-111.0386,7.5,25,6.78,1,7.29,1,14.81,17,-3.01,3,5.68,21,0.0,10],["Resilience66","Majesco UK Limited","Morristown",40.7268,-74.5081,2.2,18,5.59,1,5.49,1,6.56,2,0.85,23,9.78,0,0.33,26],["Resilience67","Atlassian PTY LTD","Chessington",51.3728,-0.2924,16.6,0,3.98,1,4.06,1,11.11,17,-7.16,8,2.04,18,0.22,19],["Resilience68","Google LLC","Chessington",51.3728,-0.2924,16.6,0,3.98,1,4.06,1,11.11,17,-7.16,8,2.04,18,0.22,19],["Resilience69","Cenata Limited","London",51.5133,-0.0819,17.1,0,3.4,1,4.0,1,10.47,17,-7.08,8,2.12,18,0.22,19],["Resilience70","DOCO SYSTEM SOLUTIONS LIMITED (DOCOsoft)","Limerick",52.6619,-8.6236,15.7,0,3.98,1,3.44,1,8.34,2,-12.07,8,1.54,11,0.21,19],["Resilience71","Oracle Corporation UK Limited","Reading",51.4598,-0.9395,16.7,0,3.62,1,2.78,1,10.99,17,-7.51,8,2.22,18,0.22,19],["Resilience72","Quotech Ltd.","London",51.515,-0.0754,17.1,0,3.4,1,4.0,1,10.47,17,-7.08,8,2.12,18,0.22,19]];
+
+const DATA = RAW.map(r=>({
+  id:r[0], name:r[1], place:r[2], lat:r[3], lon:r[4],
+  dr_v:r[5], dr_c:CATS[r[6]],
+  p3d_v:r[7], p3d_c:CATS[r[8]],
+  p1d_v:r[9], p1d_c:CATS[r[10]],
+  pdjf_v:r[11], pdjf_c:CATS[r[12]],
+  pjja_v:r[13], pjja_c:CATS[r[14]],
+  hw_v:r[15], hw_c:CATS[r[16]],
+  slr_v:r[17], slr_c:CATS[r[18]]
+}));
+
+const METRICS = [
+  {key:'dr', label:'Climate Risk – Drought Score', short:'Drought Score', unit:'Score (2040)', suffix:'', min:0, mid:10, max:20, thresh:9, threshLabel:'Score ≥ 9 (Extreme)'},
+  {key:'p3d', label:'3-Day Extreme Precipitation', short:'3-Day Precip', unit:'% Change (2040)', suffix:'%', min:-5, mid:10, max:25, thresh:9, threshLabel:'Change ≥ 9%'},
+  {key:'p1d', label:'1-Day Extreme Precipitation', short:'1-Day Precip', unit:'% Change (2040)', suffix:'%', min:-5, mid:10, max:25, thresh:9, threshLabel:'Change ≥ 9%'},
+  {key:'pdjf', label:'Precipitation Change (Dec, Jan, Feb)', short:'Precip (Dec–Feb)', unit:'% Change (2040)', suffix:'%', min:-30, mid:0, max:30, thresh:10, threshLabel:'Change ≥ 10%'},
+  {key:'pjja', label:'Precipitation Change (Jun, Jul, Aug)', short:'Precip (Jun–Aug)', unit:'% Change (2040)', suffix:'%', min:-20, mid:0, max:20, thresh:9, threshLabel:'Change ≥ 9%'},
+  {key:'hw', label:'Climate Risk – Heat Wave Score', short:'Heat Wave Score', unit:'Score (2040)', suffix:'', min:0, mid:10, max:20, thresh:9, threshLabel:'Score ≥ 9 (Extreme)'},
+  {key:'slr', label:'Sea Level Rise', short:'Sea Level Rise', unit:'Meters (2040)', suffix:' m', min:0, mid:0.2, max:0.4, thresh:0.2, threshLabel:'Rise ≥ 0.20 m'}
+];
+
+const map = L.map('map',{zoomControl:true,worldCopyJump:true,maxZoom:16}).setView([40,20],3);
+
+// 1. Layer order: grey base (200) < vegetation (250) < labels (350) < markers (400)
+map.createPane('vegetation');
+map.getPane('vegetation').style.zIndex = 250;
+map.createPane('labels');
+map.getPane('labels').style.zIndex = 350;
+map.getPane('labels').style.pointerEvents = 'none';
+
+const ESRI='https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/';
+L.tileLayer(ESRI+'World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',{
+  maxZoom:16,attribution:'Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ'
+}).addTo(map);
+L.tileLayer(ESRI+'World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}',{
+  maxZoom:16,
+  pane:'labels'
+}).addTo(map);
+
+// 2. ESA WorldCover 2021 (10 m land cover)
+const worldCover = L.tileLayer.wms('https://mapproxy.terrascope.be/mapproxy/service', {
+  layers: 'esa-worldcover-map-10m-2021-v2_map',
+  format: 'image/png',
+  transparent: true,
+  opacity: 0.55,
+  pane: 'vegetation',
+  attribution: '&copy; ESA WorldCover project 2021 / Contains modified Copernicus Sentinel data (2021) processed by ESA WorldCover consortium'
+});
+
+// 3. Toggle in a layer control
+L.control.layers(null, {
+  'Vegetation cover (ESA WorldCover 2021)': worldCover
+}, { collapsed: false }).addTo(map);
+
+// 4. Legend for the fuel-relevant classes
+const legend = L.control({ position: 'bottomright' });
+legend.onAdd = function () {
+  const div = L.DomUtil.create('div', 'veg-legend');
+  div.style.cssText = 'background:#fff;padding:6px 8px;font:12px sans-serif;border-radius:4px;box-shadow:0 1px 4px rgba(0,0,0,.3)';
+  const classes = [
+    ['#006400', 'Tree cover'], ['#ffbb22', 'Shrubland'], ['#ffff4c', 'Grassland'],
+    ['#f096ff', 'Cropland'], ['#fa0000', 'Built-up'], ['#b4b4b4', 'Bare / sparse']
+  ];
+  div.innerHTML = '<b>Vegetation</b><br>' + classes.map(([c, n]) =>
+    `<i style="display:inline-block;width:12px;height:12px;background:${c};margin-right:6px"></i>${n}`
+  ).join('<br>');
+  return div;
+};
+map.on('overlayadd', e => { if (e.layer === worldCover) legend.addTo(map); });
+map.on('overlayremove', e => { if (e.layer === worldCover) legend.remove(); });
+
+function colour(v, m){
+  const min=m.min, mid=m.mid, max=m.max;
+  const clamped=Math.max(min,Math.min(max,v));
+  const g=[26,152,80], y=[255,215,0], r=[215,48,39];
+  const [a,b,t]= clamped<=mid ? [g,y,(clamped-min)/(mid-min||1)] : [y,r,(clamped-mid)/(max-mid||1)];
+  const c=a.map((x,i)=>Math.round(x+(b[i]-x)*t));
+  return `rgb(${c[0]},${c[1]},${c[2]})`;
+}
+
+// Group sites sharing identical coordinates so none are hidden underneath another
+const groups={};
+DATA.forEach(d=>{const k=d.lat.toFixed(6)+','+d.lon.toFixed(6);(groups[k]=groups[k]||[]).push(d);});
+
+let activeMetric = METRICS[0];
+const layer = L.layerGroup().addTo(map);
+
+function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+
+function fmt(v, m){
+  return v + m.suffix;
+}
+
+function popupHtml(g){
+  const vk = activeMetric.key + '_v';
+  return g.slice().sort((a,b)=>b[vk]-a[vk]).map(d=>{
+    const rows = METRICS.map(m=>{
+      const val = d[m.key+'_v'];
+      const cat = d[m.key+'_c'];
+      const isAct = m.key === activeMetric.key;
+      return `<div class="${isAct?'active-metric':''}">${esc(m.short)}:</div>
+              <div class="${isAct?'active-metric':''}" style="text-align:right">
+                <span class="pill" style="background:${colour(val,m)}">${fmt(val,m)}</span>
+                <span style="color:#5d6b75;font-size:11px">${esc(cat)}</span>
+              </div>`;
+    }).join('');
+    return `
+    <div class="pop-site">
+      <div class="nm">${esc(d.name)} <span style="color:#5d6b75;font-weight:400;font-size:11.5px">(${esc(d.id)})</span></div>
+      <div class="loc">${esc(d.place)} · ${d.lat.toFixed(4)}, ${d.lon.toFixed(4)}</div>
+      <div class="pop-grid">${rows}</div>
+    </div>`;
+  }).join('');
+}
+
+function renderButtons(){
+  const container = document.getElementById('charList');
+  container.innerHTML = METRICS.map(m=>`
+    <button type="button" data-key="${m.key}" aria-pressed="${m.key===activeMetric.key}">
+      <span>${esc(m.label)}</span>
+      <span class="unit">${esc(m.unit)}</span>
+    </button>
+  `).join('');
+  container.querySelectorAll('button').forEach(btn=>{
+    btn.onclick = () => {
+      activeMetric = METRICS.find(x=>x.key===btn.dataset.key);
+      renderButtons();
+      draw();
+    };
+  });
+}
+
+function draw(){
+  layer.clearLayers();
+  const vk = activeMetric.key + '_v';
+  const ck = activeMetric.key + '_c';
+
+  // Draw low scores first so high-risk dots sit on top
+  Object.entries(groups).map(([k,g])=>[k,g,Math.max(...g.map(d=>d[vk]))])
+    .sort((a,b)=>a[2]-b[2]).forEach(([k,g,v])=>{
+      const m=L.circleMarker([g[0].lat,g[0].lon],{
+        radius:g.length>1?7.5:6,color:'#1d2a33',weight:g.length>1?1.5:0.8,
+        fillColor:colour(v, activeMetric),fillOpacity:0.92
+      }).bindPopup(popupHtml(g),{maxWidth:360,maxHeight:340})
+        .bindTooltip(g.length>1?`${[...new Set(g.map(d=>d.name))].join(', ')} · max ${fmt(v,activeMetric)}`:`${g[0].name} (${g[0].place}) · ${fmt(v,activeMetric)} (${g[0][ck]})`,{direction:'top',offset:[0,-6]});
+      layer.addLayer(m);
+    });
+
+  // Update scale ticks
+  const t0 = activeMetric.min;
+  const t2 = activeMetric.mid;
+  const t4 = activeMetric.max;
+  const t1 = +((t0+t2)/2).toFixed(2);
+  const t3 = +((t2+t4)/2).toFixed(2);
+  document.getElementById('ticks').innerHTML = [t0,t1,t2,t3,t4].map(t=>`<span>${t}${activeMetric.suffix}</span>`).join('');
+
+  // Update summary stats
+  const vals = DATA.map(d=>d[vk]);
+  const mean = vals.reduce((a,b)=>a+b,0)/vals.length;
+  const hi = DATA.reduce((a,b)=>b[vk]>a[vk]?b:a);
+  const lo = DATA.reduce((a,b)=>b[vk]<a[vk]?b:a);
+  const countThresh = vals.filter(v=>v>=activeMetric.thresh).length;
+
+  document.getElementById('stats').innerHTML = `
+    <span>Sites</span><b>${DATA.length}</b>
+    <span>Mean (2040)</span><b>${mean.toFixed(2)}${activeMetric.suffix}</b>
+    <span>Highest</span><b>${fmt(hi[vk],activeMetric)} (${esc(hi.name)})</b>
+    <span>Lowest</span><b>${fmt(lo[vk],activeMetric)} (${esc(lo.name)})</b>
+    <span>${esc(activeMetric.threshLabel)}</span><b>${countThresh} of ${DATA.length}</b>
+  `;
+
+  // Update category breakdown
+  const catCounts = {};
+  DATA.forEach(d=>{ catCounts[d[ck]] = (catCounts[d[ck]]||0) + 1; });
+  const catRows = Object.entries(catCounts).sort((a,b)=>b[1]-a[1]).map(([cat,cnt])=>`
+    <div class="cat-row"><span>${esc(cat)}</span><b>${cnt}</b></div>
+  `).join('');
+  document.getElementById('catBreakdown').innerHTML = `
+    <h2>2040 Category Breakdown</h2>
+    ${catRows}
+  `;
+}
+
+renderButtons();
+draw();
+map.fitBounds(DATA.map(d=>[d.lat,d.lon]),innerWidth>600?{paddingTopLeft:[380,30],paddingBottomRight:[30,30]}:{padding:[30,30]});
+</script>
+</body>
+</html>
